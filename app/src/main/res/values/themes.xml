@@ -1,18 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The home screen shows the Android wallpaper through a transparent window. -->
+    <!-- Use an opaque platform theme so startup does not depend on wallpaper-window support. -->
     <style name="Theme.Omalauncher" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowShowWallpaper">true</item>
-    </style>
-
-    <style name="Theme.Omalauncher.Window" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#FF1A1B26</item>
-    </style>
-
-    <!-- Only a dialog shows, over the app that opened it. -->
-    <style name="Theme.Omalauncher.Dialog" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">#FF101116</item>
+        <item name="android:colorAccent">#FFB9A6FF</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:navigationBarColor">#FF101116</item>
+        <item name="android:statusBarColor">#FF101116</item>
     </style>
 </resources>
