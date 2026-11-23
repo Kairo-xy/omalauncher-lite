@@ -49,23 +49,35 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        loadApps()
-        loadWidgets()
-        loadProviders()
+        // Keep launcher startup independent from optional package/widget services.
+        // Some Android skins throw while enumerating third-party widget providers.
+        runCatching { loadApps() }
+        runCatching { loadWidgets() }
+        runCatching { loadProviders() }
         setContent { LiteHome(this) }
     }
 
-    override fun onResume() { super.onResume(); runCatching { widgetHost.startListening() } }
+    override fun onResume() {
+        super.onResume()
+        // Refresh providers/apps when returning from Settings or installing a widget app.
+        runCatching { loadApps() }
+        runCatching { loadProviders() }
+        runCatching { widgetHost.startListening() }
+    }
     override fun onPause() { runCatching { widgetHost.stopListening() }; super.onPause() }
 
     private fun loadApps() {
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val found = packageManager.queryIntentActivities(query, 0).mapNotNull { info ->
-            val activity = info.activityInfo ?: return@mapNotNull null
-            val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                .setClassName(activity.packageName, activity.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            LaunchApp(info.loadLabel(packageManager).toString(), activity.packageName, launch)
-        }.distinctBy { it.packageName }.sortedBy { it.title.lowercase() }
+        val found = runCatching {
+            packageManager.queryIntentActivities(query, 0).mapNotNull { info ->
+                runCatching {
+                    val activity = info.activityInfo ?: return@runCatching null
+                    val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setClassName(activity.packageName, activity.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    LaunchApp(info.loadLabel(packageManager).toString(), activity.packageName, launch)
+                }.getOrNull()
+            }.distinctBy { it.packageName }.sortedBy { it.title.lowercase() }
+        }.getOrDefault(emptyList())
         apps.clear()
         apps.addAll(found)
     }
@@ -76,7 +88,7 @@ class MainActivity : ComponentActivity() {
         widgetIds.clear()
         repeat(count) { index ->
             val id = prefs.getInt("widget-$index", 0)
-            if (id != 0 && widgetManager.getAppWidgetInfo(id) != null) widgetIds.add(id)
+            if (id != 0 && runCatching { widgetManager.getAppWidgetInfo(id) != null }.getOrDefault(false)) widgetIds.add(id)
         }
     }
 
@@ -90,7 +102,13 @@ class MainActivity : ComponentActivity() {
 
     private fun loadProviders() {
         providers.clear()
-        providers.addAll(widgetManager.installedProviders.orEmpty().sortedBy { it.loadLabel(packageManager).toString().lowercase() })
+        val available = runCatching { widgetManager.installedProviders.orEmpty() }.getOrDefault(emptyList())
+        providers.addAll(
+            available.mapNotNull { info ->
+                // A provider can disappear during enumeration (app uninstall/update).
+                runCatching { info to info.loadLabel(packageManager).toString() }.getOrNull()
+            }.sortedBy { it.second.lowercase() }.map { it.first }
+        )
     }
 
     fun addWidget(info: AppWidgetProviderInfo) {
