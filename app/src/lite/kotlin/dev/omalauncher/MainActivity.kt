@@ -6,6 +6,8 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -42,7 +44,7 @@ class MainActivity : ComponentActivity() {
         val id = pendingWidgetId
         pendingWidgetId = 0
         if (result.resultCode == Activity.RESULT_OK && id != 0) {
-            widgetIds.add(id)
+            if (id !in widgetIds) widgetIds.add(id)
             saveWidgetIds()
         } else if (id != 0) widgetHost.deleteAppWidgetId(id)
     }
@@ -57,14 +59,23 @@ class MainActivity : ComponentActivity() {
         setContent { LiteHome(this) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        runCatching { widgetHost.startListening() }
+    }
+
     override fun onResume() {
         super.onResume()
         // Refresh providers/apps when returning from Settings or installing a widget app.
         runCatching { loadApps() }
         runCatching { loadProviders() }
-        runCatching { widgetHost.startListening() }
+        runCatching { loadWidgets() }
     }
-    override fun onPause() { runCatching { widgetHost.stopListening() }; super.onPause() }
+
+    override fun onStop() {
+        runCatching { widgetHost.stopListening() }
+        super.onStop()
+    }
 
     private fun loadApps() {
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -76,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         .setClassName(activity.packageName, activity.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     LaunchApp(info.loadLabel(packageManager).toString(), activity.packageName, launch)
                 }.getOrNull()
-            }.distinctBy { it.packageName }.sortedBy { it.title.lowercase() }
+            }.distinctBy { it.packageName to it.intent.component?.className }.sortedWith(compareBy({ it.title.lowercase() }, { it.packageName }))
         }.getOrDefault(emptyList())
         apps.clear()
         apps.addAll(found)
@@ -88,7 +99,10 @@ class MainActivity : ComponentActivity() {
         widgetIds.clear()
         repeat(count) { index ->
             val id = prefs.getInt("widget-$index", 0)
-            if (id != 0 && runCatching { widgetManager.getAppWidgetInfo(id) != null }.getOrDefault(false)) widgetIds.add(id)
+            if (id != 0) {
+                if (runCatching { widgetManager.getAppWidgetInfo(id) != null }.getOrDefault(false)) widgetIds.add(id)
+                else runCatching { widgetHost.deleteAppWidgetId(id) }
+            }
         }
     }
 
@@ -167,11 +181,20 @@ private fun LiteHome(activity: MainActivity) {
                         Txt("Open Widgets to browse widgets supplied by your installed apps.", muted, 13)
                     }
                     activity.widgetIds.toList().forEach { id ->
-                        val info = activity.widgetManager.getAppWidgetInfo(id)
+                        val info = runCatching { activity.widgetManager.getAppWidgetInfo(id) }.getOrNull()
                         if (info != null) {
                             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(panel).padding(8.dp)) {
                                 AndroidView(
-                                    factory = { context -> activity.widgetHost.createView(context, id, info).apply { setAppWidget(id, info) } },
+                                    factory = { context ->
+                                        runCatching {
+                                            activity.widgetHost.createView(context, id, info).apply { setAppWidget(id, info) }
+                                        }.getOrElse { error ->
+                                            TextView(context).apply {
+                                                text = "Widget unavailable\\n${error.javaClass.simpleName}"
+                                                setPadding(24, 24, 24, 24)
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 300.dp)
                                 )
                                 Box(Modifier.align(Alignment.TopEnd).clip(RoundedCornerShape(10.dp)).background(bg)
