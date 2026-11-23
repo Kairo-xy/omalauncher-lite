@@ -6,7 +6,6 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -190,7 +189,7 @@ private fun LiteHome(activity: MainActivity) {
                                             activity.widgetHost.createView(context, id, info).apply { setAppWidget(id, info) }
                                         }.getOrElse { error ->
                                             TextView(context).apply {
-                                                text = "Widget unavailable\\n${error.javaClass.simpleName}"
+                                                text = "Widget unavailable\n${error.javaClass.simpleName}"
                                                 setPadding(24, 24, 24, 24)
                                             }
                                         }
