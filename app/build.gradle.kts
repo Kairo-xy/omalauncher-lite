@@ -6,14 +6,21 @@ plugins {
 android {
     namespace = "dev.omalauncher"
     compileSdk = 37
+
     defaultConfig {
         applicationId = "dev.omalauncher"
         minSdk = 29
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
-    buildFeatures { buildConfig = true; compose = true }
+
+    // The Lite launcher uses platform Android Views; no Compose runtime is packaged.
+    buildFeatures {
+        buildConfig = true
+        compose = false
+    }
+
     sourceSets {
         getByName("main") {
             java.setSrcDirs(listOf("src/lite/kotlin"))
@@ -21,24 +28,33 @@ android {
             jniLibs.setSrcDirs(emptyList<String>())
         }
     }
+
     flavorDimensions += "store"
     productFlavors {
-        create("foss") { dimension = "store"; isDefault = true }
-        create("play") { dimension = "store" }
+        create("foss") {
+            dimension = "store"
+            isDefault = true
+        }
+        create("play") {
+            dimension = "store"
+        }
     }
-    testOptions { unitTests.isReturnDefaultValues = true }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildTypes {
-        debug { isPseudoLocalesEnabled = true }
+        debug {
+            isPseudoLocalesEnabled = true
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
         }
     }
 }
+
 dependencies {
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.compose.runtime)
-    implementation(libs.compose.foundation)
-    implementation(libs.compose.ui)
     testImplementation(libs.junit)
 }
