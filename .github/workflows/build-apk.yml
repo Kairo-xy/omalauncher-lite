@@ -1,0 +1,49 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    name: Build installable APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android NDK
+        run: |
+          ndk=$(sed -n 's/^NDK_VERSION=//p' scripts/fetch-proot.sh)
+          if [ ! -d "$ANDROID_HOME/ndk/$ndk" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" >/dev/null
+          fi
+
+      - name: Build FOSS debug APK
+        run: ./gradlew --no-daemon :app:assembleFossDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: omalauncher-lite-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/foss/debug/app-foss-debug.apk
+          if-no-files-found: error
+          retention-days: 30
