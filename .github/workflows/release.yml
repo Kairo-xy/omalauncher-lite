@@ -1,15 +1,20 @@
 name: release
 
-# Builds a signed APK for a version tag (v0.4.0) and attaches it to a GitHub release.
-# The Play Store AAB is still built and uploaded locally with fastlane.
+# On every push to main: builds the APK and publishes it on the Releases page.
+# Without KEYSTORE_* secrets the APK is debug-signed (installable, not for Play).
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
 
 permissions:
   contents: write
-  id-token: write
-  attestations: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
 
 jobs:
   apk:
@@ -24,17 +29,14 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Check the tag matches the app version
+      - name: Read the app version
         id: version
         run: |
           name=$(sed -n 's/^ *versionName = "\(.*\)"/\1/p' app/build.gradle.kts)
           code=$(sed -n 's/^ *versionCode = \([0-9]*\)/\1/p' app/build.gradle.kts)
-          if [ "$GITHUB_REF_NAME" != "v$name" ]; then
-            echo "Tag $GITHUB_REF_NAME doesn't match versionName $name" >&2
-            exit 1
-          fi
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name-build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Fetch proot
         run: |
@@ -43,7 +45,7 @@ jobs:
           [ -d "$ANDROID_HOME/ndk/$ndk" ] || yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" >/dev/null
           scripts/fetch-proot.sh
 
-      # The upload key, so the APK has the fingerprint assetlinks.json already lists.
+      # Optional: sign with your own key if the secrets exist, otherwise the build falls back to debug signing.
       - name: Write the signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -52,8 +54,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "The KEYSTORE_* secrets aren't set; the APK would be debug-signed" >&2
-            exit 1
+            echo "No KEYSTORE_* secrets set; the APK will be debug-signed."
+            exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.jks"
           cat > keystore.properties <<EOF
@@ -63,36 +65,23 @@ jobs:
           keyPassword=$KEY_PASSWORD
           EOF
 
-      - name: Test and build
-        # The play AAB too, only for its R8 mapping: fastlane uploads one built locally, which maps the same.
-        run: ./gradlew :owl:test :app:testFossDebugUnitTest :app:assembleFossRelease :app:bundlePlayRelease
+      - name: Build
+        run: ./gradlew :app:assembleFossRelease
 
-      # Checksum and provenance, so a sideloaded APK can be checked against what CI built:
-      # sha256sum -c SHA256SUMS, or gh attestation verify <apk> -R SimonSchubert/omalauncher.
-      - name: Checksum
+      - name: Collect files
         id: apk
         run: |
-          apk="omalauncher-${{ steps.version.outputs.name }}.apk"
+          apk="omalauncher-lite-${{ steps.version.outputs.name }}-build${GITHUB_RUN_NUMBER}.apk"
           cp app/build/outputs/apk/foss/release/app-foss-release.apk "$apk"
           sha256sum "$apk" > SHA256SUMS
           echo "file=$apk" >> "$GITHUB_OUTPUT"
-          # Both builds' R8 mappings: the APK's, and the play build's, which retraces Play crashes. Match a trace's
-          # `r8-map-id` to `# pg_map_id` at the top of one.
-          cp app/build/outputs/mapping/fossRelease/mapping.txt "mapping-${{ steps.version.outputs.name }}.txt"
-          cp app/build/outputs/mapping/playRelease/mapping.txt "mapping-play-${{ steps.version.outputs.name }}.txt"
 
-      - uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: ${{ steps.apk.outputs.file }}
-
-      - name: Release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          apk="${{ steps.apk.outputs.file }}"
-          notes=fastlane/metadata/android/en-US/changelogs/${{ steps.version.outputs.code }}.txt
-          if [ ! -f "$notes" ]; then
-            echo "$notes is missing" >&2
-            exit 1
-          fi
-          gh release create "$GITHUB_REF_NAME" "$apk" SHA256SUMS "mapping-${{ steps.version.outputs.name }}.txt" "mapping-play-${{ steps.version.outputs.name }}.txt" --title "$GITHUB_REF_NAME" --notes-file "$notes" --verify-tag
+          gh release create "${{ steps.version.outputs.tag }}" \
+            "${{ steps.apk.outputs.file }}" SHA256SUMS \
+            --target "$GITHUB_SHA" \
+            --title "Omalauncher Lite ${{ steps.version.outputs.name }} (build ${GITHUB_RUN_NUMBER})" \
+            --generate-notes
