@@ -21,7 +21,6 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      # The NDK app/build.gradle.kts pins; installed up front so AGP doesn't download it mid-build.
       - name: Install the NDK
         run: |
           ndk=$(sed -n 's/^NDK_VERSION=//p' scripts/fetch-proot.sh)
@@ -30,7 +29,14 @@ jobs:
       - name: Test
         run: ./gradlew :owl:test :app:testFossDebugUnitTest :owl:owlJar
 
-      # Builds without proot (scripts/fetch-proot.sh), which is enough to compile wlbridge and run lint.
-      # The play build adds Play's in-app updates and their dependencies; linting it too catches what they break.
       - name: Build and lint
         run: ./gradlew :app:assembleFossDebug :app:lintFossDebug :app:lintPlayDebug
+
+      - name: Upload debug APK (pushes only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: omalauncher-lite-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/foss/debug/app-foss-debug.apk
+          if-no-files-found: error
+          retention-days: 14
