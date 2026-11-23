@@ -1,27 +1,28 @@
 # Omalauncher Lite
 
-A lightweight Android launcher fork inspired by Omalauncher.
+A lightweight Android home launcher focused on the essentials.
 
-## Goals
+## Included
+- Android home screen and app drawer
+- App search
+- Android AppWidgetHost support
+- On-device widget catalogue for widgets supplied by installed apps
+- Dark and light appearance settings
 
-- Android home screen, app drawer, and app search
-- Widgets and the widget marketplace
-- Theme and wallpaper customization
-- Keep the launcher fast, simple, and low on background/resource usage
-- No AI agents, agent integrations, Linux/proot environment, terminal, or desktop compositor
+## Removed from the Lite build
+- AI coding agents and agent integrations
+- Arch Linux / proot runtime and package manager
+- Terminal and Linux desktop windows
+- Wayland compositor and native Linux bridges
+- Voice-agent runtime and its speech model dependency
 
-This fork is being simplified in stages. The current codebase still contains upstream Linux/agent components; removals are being done incrementally so the app stays buildable.
+The Lite build uses a dedicated source set (app/src/lite/kotlin) and does not compile or package the original Linux/agent implementation.
 
 ## Build
+- Debug APK: ./gradlew :app:assembleFossDebug
+- Release APK: ./gradlew :app:assembleFossRelease
 
-```bash
-./gradlew :app:assembleFossDebug
-```
+GitHub Actions builds the debug APK on pushes to main and publishes an APK plus checksum for version tags.
 
-## Automated builds
-
-GitHub Actions runs tests and builds on pushes to `main` and pull requests. Push builds publish an APK artifact. Releases are published through the repository's release workflow.
-
-## Upstream
-
-This project is based on [SimonSchubert/omalauncher](https://github.com/SimonSchubert/omalauncher). See the upstream license and third-party notices in this repository.
+## Widget catalogue
+The catalogue lists Android widgets exposed by apps already installed on the device. It uses Android's AppWidgetHost API and the provider app's own widget implementation; it does not download third-party widget packages.
